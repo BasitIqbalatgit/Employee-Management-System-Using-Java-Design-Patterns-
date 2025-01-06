@@ -5,12 +5,6 @@
  */
 package employeemanagementsystem;
 
-/**
- *
- * @author MarcoMan
- * Subscribe our Channel --> https://www.youtube.com/channel/UCPgcmw0LXToDn49akUEJBkQ
- * Thanks for the support guys! <3
- */
 public class getData {
     public static String username;
     public static String path;
