@@ -1,6 +1,10 @@
 
-package employeemanagementsystem;
+package Controller;
 
+import DALManager.DatabaseManager;
+import DALManager.EmployeeDAO;
+import employeemanagementsystem.employeeData;
+import employeemanagementsystem.getData;
 import java.io.File;
 import java.net.URL;
 import java.sql.Connection;
@@ -45,7 +49,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
-public class dashboardController implements Initializable {
+public class DashboardController implements Initializable {
 
     @FXML
     private AnchorPane main_form;
@@ -200,48 +204,39 @@ public class dashboardController implements Initializable {
     private ResultSet result;
 
     private Image image;
-
+    // Basit ..........
+    
+    private EmployeeDAO employeeDao;
+    public DashboardController(){
+        employeeDao  = new EmployeeDAO();
+    }
+    
+    //---------------
      // Method to count total employees
     public void homeTotalEmployees() {
-        String sql = "SELECT COUNT(employee_id) AS total FROM employee";
-        int totalEmployees = executeCountQuery(sql);
+//        String sql = "SELECT COUNT(employee_id) AS total FROM employee";
+//        int totalEmployees = executeCountQuery(sql);
+        int totalEmployees = employeeDao.getTotalEmployees();
         home_totalEmployees.setText(String.valueOf(totalEmployees));
     }
 
     // Method to count total present employees
     public void homeEmployeeTotalPresent() {
-        String sql = "SELECT COUNT(employee_id) AS total FROM employee_info";
-        int totalPresents = executeCountQuery(sql);
+//        String sql = "SELECT COUNT(employee_id) AS total FROM employee_info";
+//        int totalPresents = executeCountQuery(sql);
+        int totalPresents = employeeDao.getTotalPresentEmployees();
         home_totalPresents.setText(String.valueOf(totalPresents));
     }
 
     // Method to count total inactive employees
     public void homeTotalInactive() {
-        String sql = "SELECT COUNT(employee_id) AS total FROM employee_info WHERE salary = 0.0";
-        int totalInactive = executeCountQuery(sql);
+//        String sql = "SELECT COUNT(employee_id) AS total FROM employee_info WHERE salary = 0.0";
+//        int totalInactive = executeCountQuery(sql);
+            int totalInactive= employeeDao.getTotalInactiveEmployees();
         home_totalInactiveEm.setText(String.valueOf(totalInactive));
     }
 
-    // Generic method for executing count queries
-    private int executeCountQuery(String sql) {
-        connect = database.connectDb();
-        int countData = 0;
-
-        try (PreparedStatement preparedStatement = connect.prepareStatement(sql);
-             ResultSet resultSet = preparedStatement.executeQuery()) {
-
-            if (resultSet.next()) {
-                countData = resultSet.getInt("total");
-            }
-
-        } catch (Exception e) {
-            System.err.println("Error executing query: " + sql);
-            e.printStackTrace();
-        }
-
-        return countData;
-    }
-
+    
 
     public void homeChart() {
 
@@ -249,7 +244,7 @@ public class dashboardController implements Initializable {
 
         String sql = "SELECT date, COUNT(employee_id) FROM employee GROUP BY date ORDER BY TIMESTAMP(date) ASC LIMIT 7";
         
-        connect = database.connectDb();
+        connect = DatabaseManager.getInstance().getConnection();
 
         try {
             XYChart.Series chart = new XYChart.Series();
@@ -271,19 +266,6 @@ public class dashboardController implements Initializable {
     
     
     public void addEmployeeAdd() {
-    Date date = new Date();
-    java.sql.Date sqlDate = new java.sql.Date(date.getTime());
-
-    String employeeSql = "INSERT INTO employee "
-            + "(employee_id, firstName, lastName, gender, phoneNum, position_id, image, date) "
-            + "VALUES(?, ?, ?, ?, ?, ?, ?, ?)";
-    
-    String employeeInfoSql = "INSERT INTO employee_info "
-            + "(employee_id, salary, date) "
-            + "VALUES(?, ?, ?)";
-
-    connect = database.connectDb();
-
     try {
         // Check if any required field is empty
         if (isAnyFieldEmpty()) {
@@ -291,50 +273,32 @@ public class dashboardController implements Initializable {
             return;
         }
 
-        // Check if employee ID already exists
-        if (isEmployeeIdExists(addEmployee_employeeID.getText())) {
-            showAlert(Alert.AlertType.ERROR, "Error Message",
-                    "Employee ID: " + addEmployee_employeeID.getText() + " already exists!");
-            return;
-        }
+        // Call the EmployeeDAO `addEmployee` method
+        boolean isAdded = employeeDao.addEmployee(
+                addEmployee_employeeID.getText(),
+                addEmployee_firstName.getText(),
+                addEmployee_lastName.getText(),
+                (String) addEmployee_gender.getSelectionModel().getSelectedItem(),
+                addEmployee_phoneNum.getText(),
+                (String) addEmployee_position.getSelectionModel().getSelectedItem(),
+                getData.path
+        );
 
-        // Get the selected position ID
-        Integer positionId = getPositionId((String) addEmployee_position.getSelectionModel().getSelectedItem());
-        if (positionId == null) {
-            showAlert(Alert.AlertType.ERROR, "Error Message", "Invalid position selected!");
-            return;
+        if (isAdded) {
+            showAlert(Alert.AlertType.INFORMATION, "Information Message", "Employee successfully added!");
+            addEmployeeShowListData();
+            addEmployeeReset();
+        } else {
+            showAlert(Alert.AlertType.ERROR, "Error Message", "Failed to add employee. Please try again!");
         }
-
-        // Insert into `employee` table
-        try (PreparedStatement employeeStmt = connect.prepareStatement(employeeSql)) {
-            employeeStmt.setString(1, addEmployee_employeeID.getText());
-            employeeStmt.setString(2, addEmployee_firstName.getText());
-            employeeStmt.setString(3, addEmployee_lastName.getText());
-            employeeStmt.setString(4, (String) addEmployee_gender.getSelectionModel().getSelectedItem());
-            employeeStmt.setString(5, addEmployee_phoneNum.getText());
-            employeeStmt.setInt(6, positionId);
-            employeeStmt.setString(7, sanitizeFilePath(getData.path));
-            employeeStmt.setDate(8, sqlDate);
-            employeeStmt.executeUpdate();
-        }
-
-        // Insert into `employee_info` table
-        try (PreparedStatement employeeInfoStmt = connect.prepareStatement(employeeInfoSql)) {
-            employeeInfoStmt.setString(1, addEmployee_employeeID.getText());
-            employeeInfoStmt.setDouble(2, 0.0); // Default salary
-            employeeInfoStmt.setDate(3, sqlDate);
-            employeeInfoStmt.executeUpdate();
-        }
-
-        showAlert(Alert.AlertType.INFORMATION, "Information Message", "Successfully Added!");
-        addEmployeeShowListData();
-        addEmployeeReset();
 
     } catch (Exception e) {
         System.err.println("Error adding employee: " + e.getMessage());
         e.printStackTrace();
-    } 
+        showAlert(Alert.AlertType.ERROR, "Error Message", "An unexpected error occurred!");
+    }
 }
+
 
 private boolean isAnyFieldEmpty() {
     return addEmployee_employeeID.getText().isEmpty()
@@ -346,47 +310,6 @@ private boolean isAnyFieldEmpty() {
             || getData.path == null || getData.path.trim().isEmpty();
 }
 
-private boolean isEmployeeIdExists(String employeeId) {
-    String checkSql = "SELECT employee_id FROM employee WHERE employee_id = ?";
-    try (PreparedStatement checkStmt = connect.prepareStatement(checkSql)) {
-        checkStmt.setString(1, employeeId);
-        ResultSet resultSet = checkStmt.executeQuery();
-        return resultSet.next();
-    } catch (SQLException e) {
-        System.err.println("Error checking employee ID: " + e.getMessage());
-        return false;
-    }
-}
-
-private Integer getPositionId(String positionName) {
-    if (positionName == null || positionName.isEmpty()) {
-        System.out.println("Position name is null or empty");
-        return null;
-    }
-
-    String positionSql = "SELECT position_id FROM position WHERE position_name = ?";
-    try (PreparedStatement positionStmt = connect.prepareStatement(positionSql)) {
-        positionStmt.setString(1, positionName);
-        ResultSet resultSet = positionStmt.executeQuery();
-        if (resultSet.next()) {
-            System.out.println("The Position ID is : "+ resultSet.getInt("position_id"));
-            return resultSet.getInt("position_id");
-        } else {
-            System.out.println("No matching position found for: " + positionName);
-        }
-    } catch (SQLException e) {
-        System.err.println("Error retrieving position ID: " + e.getMessage());
-    }
-    return null;
-}
-
-
-private String sanitizeFilePath(String path) {
-    if (path != null) {
-        return path.replace("\\", "\\\\");
-    }
-    return "";
-}
 
 private void showAlert(Alert.AlertType type, String title, String message) {
     Alert alert = new Alert(type);
@@ -396,42 +319,21 @@ private void showAlert(Alert.AlertType type, String title, String message) {
     alert.showAndWait();
 }
 
-// update ................
-
-public void addEmployeeUpdate() throws SQLException {
-    String uri = getData.path;
-    uri = uri.replace("\\", "\\\\"); // Escape backslashes for SQL compatibility
-
-    Date date = new Date();
-    java.sql.Date sqlDate = new java.sql.Date(date.getTime());
-
-    // Retrieve position_id based on selected position name
-    Integer positionId = getPositionId((String) addEmployee_position.getSelectionModel().getSelectedItem());
-
-    if (positionId == null) {
-        showAlert(Alert.AlertType.ERROR, "Error Message", "Invalid position selected.");
-        return;
-    }
-
-    String sql = "UPDATE employee SET firstName = ?, lastName = ?, gender = ?, phoneNum = ?, position_id = ?, image = ?, date = ? WHERE employee_id = ?";
-
-    if (connect == null || connect.isClosed()) {
-        connect = database.connectDb(); // Reopen connection if closed
-    }
-
+public void addEmployeeUpdate() {
     try {
+        // Validate input fields
         if (addEmployee_employeeID.getText().isEmpty() ||
             addEmployee_firstName.getText().isEmpty() ||
             addEmployee_lastName.getText().isEmpty() ||
             addEmployee_gender.getSelectionModel().getSelectedItem() == null ||
             addEmployee_phoneNum.getText().isEmpty() ||
-            addEmployee_position.getSelectionModel().getSelectedItem() == null ||
-            getData.path == null || getData.path.isEmpty()) {
+            addEmployee_position.getSelectionModel().getSelectedItem() == null) {
 
             showAlert(Alert.AlertType.ERROR, "Error Message", "Please fill all blank fields.");
             return;
         }
 
+        // Confirm update action
         Alert confirmationAlert = new Alert(Alert.AlertType.CONFIRMATION);
         confirmationAlert.setTitle("Confirmation Message");
         confirmationAlert.setHeaderText(null);
@@ -440,69 +342,36 @@ public void addEmployeeUpdate() throws SQLException {
 
         if (option.isPresent() && option.get().equals(ButtonType.OK)) {
             int employeeId = Integer.parseInt(addEmployee_employeeID.getText());
+            String firstName = addEmployee_firstName.getText();
+            String lastName = addEmployee_lastName.getText();
+            String gender = (String) addEmployee_gender.getSelectionModel().getSelectedItem();
+            String phoneNum = addEmployee_phoneNum.getText();
+            String position = (String) addEmployee_position.getSelectionModel().getSelectedItem();
 
-            try (PreparedStatement stmt = connect.prepareStatement(sql)) {
-                stmt.setString(1, addEmployee_firstName.getText());
-                stmt.setString(2, addEmployee_lastName.getText());
-                stmt.setString(3, (String) addEmployee_gender.getSelectionModel().getSelectedItem());
-                stmt.setString(4, addEmployee_phoneNum.getText());
-                stmt.setInt(5, positionId);
-                stmt.setString(6, uri);
-                stmt.setDate(7, sqlDate);
-                stmt.setInt(8, employeeId);
-                stmt.executeUpdate();
+            // Call EmployeeDAO to perform the update
+            
+            boolean isUpdated = employeeDao.updateEmployee(employeeId, firstName, lastName, gender, position, phoneNum);
 
-                // Update salary in employee_info
-                double currentSalary = retrieveSalary(employeeId);
-                String updateSalarySql = "UPDATE employee_info SET salary = ? WHERE employee_id = ?";
-                try (PreparedStatement updateSalaryStmt = connect.prepareStatement(updateSalarySql)) {
-                    updateSalaryStmt.setDouble(1, currentSalary);
-                    updateSalaryStmt.setInt(2, employeeId);
-                    updateSalaryStmt.executeUpdate();
-                }
-
+            if (isUpdated) {
                 showAlert(Alert.AlertType.INFORMATION, "Information Message", "Successfully Updated!");
                 addEmployeeShowListData();
                 addEmployeeReset();
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Error Message", "Failed to update employee.");
             }
         }
-    } catch (SQLException e) {
-        showAlert(Alert.AlertType.ERROR, "Database Error", "An error occurred: " + e.getMessage());
+    } catch (NumberFormatException e) {
+        showAlert(Alert.AlertType.ERROR, "Error Message", "Invalid Employee ID.");
+    } catch (Exception e) {
+        showAlert(Alert.AlertType.ERROR, "Error Message", "An error occurred: " + e.getMessage());
         e.printStackTrace();
-    } 
-}
-
-
-// Method to Retrieve Salary from Database
-private double retrieveSalary(int employeeId) throws SQLException {
-    String query = "SELECT salary FROM employee_info WHERE employee_id = ?";
-    double salary = 0.0;
-
-    if (connect == null || connect.isClosed()) {
-        connect = database.connectDb();
     }
-
-    try (PreparedStatement stmt = connect.prepareStatement(query)) {
-        stmt.setInt(1, employeeId);
-        try (ResultSet rs = stmt.executeQuery()) {
-            if (rs.next()) {
-                salary = rs.getDouble("salary");
-            }
-        }
-    } 
-    return salary;
 }
 
 
 
-
-
-// delete operation................
-
-    public void addEmployeeDelete() {
-    // SQL query using PreparedStatement to prevent SQL injection
-    String sql = "DELETE FROM employee WHERE employee_id = ?";
-
+//      Delete Functionality...............
+public void addEmployeeDelete() {
     // Validate employee ID field
     if (addEmployee_employeeID.getText().isEmpty()) {
         showAlert(Alert.AlertType.ERROR, "Error Message", "Please enter an Employee ID to delete.");
@@ -521,33 +390,24 @@ private double retrieveSalary(int employeeId) throws SQLException {
             // Parse employee ID
             int employeeId = Integer.parseInt(addEmployee_employeeID.getText());
 
-            // Get database connection
-            connect = database.connectDb();
+            // DAO integration
+            boolean isDeleted = employeeDao.deleteEmployee(employeeId);
 
-            // Prepare and execute the delete statement
-            try (PreparedStatement preparedStatement = connect.prepareStatement(sql)) {
-                preparedStatement.setInt(1, employeeId);
-                int rowsAffected = preparedStatement.executeUpdate();
-
-                // Check if the employee was successfully deleted
-                if (rowsAffected > 0) {
-                    showAlert(Alert.AlertType.INFORMATION, "Information Message", "Successfully Deleted!");
-                    addEmployeeShowListData();
-                    addEmployeeReset();
-                } else {
-                    showAlert(Alert.AlertType.ERROR, "Error Message", "Employee ID not found. Deletion failed.");
-                }
+            // Handle success or failure
+            if (isDeleted) {
+                showAlert(Alert.AlertType.INFORMATION, "Information Message", "Successfully Deleted!");
+                addEmployeeShowListData();
+                addEmployeeReset();
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Error Message", "Employee ID not found. Deletion failed.");
             }
         }
     } catch (NumberFormatException e) {
         showAlert(Alert.AlertType.ERROR, "Error Message", "Invalid Employee ID format. Please enter a numeric value.");
-    } catch (SQLException e) {
-        showAlert(Alert.AlertType.ERROR, "Database Error", "An error occurred while deleting the employee: " + e.getMessage());
-        e.printStackTrace();
-    } 
+    } catch (Exception e) {
+        showAlert(Alert.AlertType.ERROR, "Error Message", "An unexpected error occurred: " + e.getMessage());
+    }
 }
-
-
 
 
     public void addEmployeeReset() {
@@ -643,7 +503,7 @@ private double retrieveSalary(int employeeId) throws SQLException {
     public ObservableList<employeeData> addEmployeeListData() {
     ObservableList<employeeData> listData = FXCollections.observableArrayList();
     String sql = "SELECT e.employee_id, e.firstName, e.lastName, e.gender, e.phoneNum, p.position_name AS position, e.image, e.date FROM employee e LEFT JOIN position p ON e.position_id = p.position_id";
-    connect = database.connectDb();
+    connect = DatabaseManager.getInstance().getConnection();
 
     try {
         prepare = connect.prepareStatement(sql);
@@ -714,98 +574,71 @@ private double retrieveSalary(int employeeId) throws SQLException {
     
 
     public void salaryUpdate() {
-    // SQL query with placeholders to prevent SQL injection
-    String sql = "UPDATE employee_info SET salary = ? WHERE employee_id = ?";
+    Alert alert;
 
-    // Connect to the database
-    connect = database.connectDb();
-
-    try {
-        Alert alert;
-
-        // Validate required fields
-        if (salary_employeeID.getText().isEmpty() || salary_salary.getText().isEmpty()) {
-            alert = new Alert(AlertType.ERROR);
-            alert.setTitle("Error Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Please select an employee and provide a valid salary.");
-            alert.showAndWait();
-            return;
-        }
-
-        // Parse salary to ensure it's a valid number
-        double salary;
-        try {
-            salary = Double.parseDouble(salary_salary.getText());
-        } catch (NumberFormatException e) {
-            alert = new Alert(AlertType.ERROR);
-            alert.setTitle("Error Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Invalid salary input! Please enter a valid numeric value.");
-            alert.showAndWait();
-            return;
-        }
-
-        // Check if salary is non-negative
-        if (salary < 0) {
-            alert = new Alert(AlertType.ERROR);
-            alert.setTitle("Error Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Salary cannot be negative.");
-            alert.showAndWait();
-            return;
-        }
-
-        // Parse employee ID
-        int employeeId;
-        try {
-            employeeId = Integer.parseInt(salary_employeeID.getText());
-        } catch (NumberFormatException e) {
-            alert = new Alert(AlertType.ERROR);
-            alert.setTitle("Error Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Invalid Employee ID! Please ensure it is a valid number.");
-            alert.showAndWait();
-            return;
-        }
-
-        // Prepare the SQL statement to update salary
-        prepare = connect.prepareStatement(sql);
-        prepare.setDouble(1, salary);
-        prepare.setInt(2, employeeId);
-        // Execute the update
-        int rowsUpdated = prepare.executeUpdate();
-
-        // Check if the update was successful
-        if (rowsUpdated > 0) {
-            alert = new Alert(AlertType.INFORMATION);
-            alert.setTitle("Information Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Salary successfully updated!");
-            alert.showAndWait();
-
-            // Refresh the table to show updated data
-            salaryShowListData();
-
-            // Reset the input fields
-            salaryReset();
-        } else {
-            alert = new Alert(AlertType.ERROR);
-            alert.setTitle("Error Message");
-            alert.setHeaderText(null);
-            alert.setContentText("Employee ID not found. Please select a valid employee.");
-            alert.showAndWait();
-        }
-
-    } catch (Exception e) {
-        e.printStackTrace();
-        Alert alert = new Alert(AlertType.ERROR);
+    // Validate required fields
+    if (salary_employeeID.getText().isEmpty() || salary_salary.getText().isEmpty()) {
+        alert = new Alert(AlertType.ERROR);
         alert.setTitle("Error Message");
         alert.setHeaderText(null);
-        alert.setContentText("An error occurred while updating the salary. Please try again.");
+        alert.setContentText("Please select an employee and provide a valid salary.");
         alert.showAndWait();
-    } 
+        return;
+    }
+
+    double salary;
+    int employeeId;
+
+    // Parse salary and employee ID with validation
+    try {
+        salary = Double.parseDouble(salary_salary.getText());
+        employeeId = Integer.parseInt(salary_employeeID.getText());
+
+        if (salary < 0) {
+            throw new IllegalArgumentException("Salary cannot be negative.");
+        }
+    } catch (NumberFormatException e) {
+        alert = new Alert(AlertType.ERROR);
+        alert.setTitle("Error Message");
+        alert.setHeaderText(null);
+        alert.setContentText("Invalid salary or Employee ID input! Please ensure numeric values are entered.");
+        alert.showAndWait();
+        return;
+    } catch (IllegalArgumentException e) {
+        alert = new Alert(AlertType.ERROR);
+        alert.setTitle("Error Message");
+        alert.setHeaderText(null);
+        alert.setContentText(e.getMessage());
+        alert.showAndWait();
+        return;
+    }
+
+    // Use DAO to update the salary
+    EmployeeDAO employeeDAO = new EmployeeDAO();
+    boolean isUpdated = employeeDAO.updateEmployeeSalary(employeeId, salary);
+
+    // Show appropriate alert based on the result
+    if (isUpdated) {
+        alert = new Alert(AlertType.INFORMATION);
+        alert.setTitle("Information Message");
+        alert.setHeaderText(null);
+        alert.setContentText("Salary successfully updated!");
+        alert.showAndWait();
+
+        // Refresh the table to show updated data
+        salaryShowListData();
+
+        // Reset the input fields
+        salaryReset();
+    } else {
+        alert = new Alert(AlertType.ERROR);
+        alert.setTitle("Error Message");
+        alert.setHeaderText(null);
+        alert.setContentText("Employee ID not found. Please select a valid employee.");
+        alert.showAndWait();
+    }
 }
+
 
 
     public void salaryReset() {
@@ -826,7 +659,7 @@ private double retrieveSalary(int employeeId) throws SQLException {
              "LEFT JOIN employee_info ei ON e.employee_id = ei.employee_id";
 
             
-    connect = database.connectDb();
+    connect = DatabaseManager.getInstance().getConnection();
 
     try {
         prepare = connect.prepareStatement(sql);
@@ -891,6 +724,8 @@ public void salaryShowListData() {
 
     public void displayUsername() {
         username.setText(getData.username);
+        
+        System.out.println("User Name is : " + username.getText() + "and the user name in here is : "+ getData.username);
     }
 
     public void switchForm(ActionEvent event) {
@@ -951,7 +786,7 @@ public void salaryShowListData() {
             if (option.get().equals(ButtonType.OK)) {
 
                 logout.getScene().getWindow().hide();
-                Parent root = FXMLLoader.load(getClass().getResource("FXMLDocument.fxml"));
+                Parent root = FXMLLoader.load(getClass().getResource("/employeemanagementsystem/FXMLDocument.fxml"));
                 Stage stage = new Stage();
                 Scene scene = new Scene(root);
 
